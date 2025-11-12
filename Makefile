@@ -3,7 +3,8 @@ CC =	gcc
 CFLAGS =	-Wall -Wextra -Werror
 TARGET =	scheduler
 
-SRCS =	src/scheduler_lab.c
+SRCS =	src/scheduler_lab.c \
+		src/manage_jobs.c
 
 OBJS =	$(SRCS:.c=.o)
 

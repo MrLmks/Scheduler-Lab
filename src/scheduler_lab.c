@@ -12,24 +12,6 @@
 
 #define MAX_JOBS 100
 
-// check le repo python : 
-// https://github.com/remzi-arpacidusseau/ostep-homework/blob/master/cpu-sched/scheduler.py
-// 
-void job_list(options_t *options) {
-    jobs_t jobs;
-
-    while (options.jobs != NULL) { 
-        jobs->id = options->jobs;
-        if (options.policy == RR) {
-            jobs->remaining = options->runtime;
-        }
-        jobs->runtime = options->max_runtime;
-        jobs->response = 0.0;
-        jobs->turnaround = 0.0;
-        jobs->wait = 0.0;
-    }
-}
-
 char *strupcase(char *str) {
     for (int i = 0; str[i] != '\0'; i++) {
         if (str[i] >= 'a' && str[i] <= 'z') {
@@ -54,16 +36,28 @@ void helper(options_t *options, char *value) {
     }
 }
 
+bool check_joblist(char *value) {
+    for (int i = 0; value[i] != '\0'; i++) {
+        if ((value[i] < '0' || value[i] > '9') && value[i] != ',') {
+            return true;
+        }
+    }
+    return false;
+}
+
 void run_flag(options_t *options, char flag, char *value) {
-    switch (tolower(flag)) {
+    if (flag) {
+       switch (tolower(flag)) {
         case 'p':
             helper(options, value);
             break;
         case 's':
-            if (atoi(value) == 1) {
-                options->seed = 1;
-            } else if (atoi(value) > 1) {
-                fprintf(stderr, "Wrong input. Seed is either 1 or 0.\n");
+            if (atoi(value) >= 1) {
+                options->use_seed = true;
+                options->seed_value = atoi(value);
+            } else if (atoi(value) <= 0) {
+                options->use_seed = false;
+                options->seed_value = 0;
             }
             break;
         case 'j':
@@ -79,6 +73,7 @@ void run_flag(options_t *options, char flag, char *value) {
             int maxlen = 1 + rand() % MAX_JOBS;
             if (maxlen <= 0) {
                 fprintf(stderr, "Error generating runtime...\n");
+                return;
             }
             options->max_runtime = maxlen;
             break;
@@ -87,6 +82,7 @@ void run_flag(options_t *options, char flag, char *value) {
                 options->quantum = atoi(value);
             } else if (atoi(value) <= 0) { 
                 fprintf(stderr, "Error generating length time slice.\n");
+                return;
             }
             break;
         case 'c':
@@ -97,31 +93,71 @@ void run_flag(options_t *options, char flag, char *value) {
             }
             else {
                 fprintf(stderr, "Error. write either {true} or {false}.\n");
+                return;
             }
             break;
+        case 'l':
+            if (check_joblist(value)) {
+                fprintf(stderr, "Error. Write in this format : [12,34,43]\n");
+                return;
+            }
+            strncpy(options->jlist, value, MAX_JOBS);
+            extract_job_list(options);
+            show_jobs(options);
+            break;
         default:
-            break;    
+            break;
+        } 
     }
 }
 
-void parse_args(int argc, char **argv) {
-    options_t options;
+bool check_flag(char flag) {
+    if (flag == 'l' || flag == 'c' || flag == 'q' || flag == 'm' 
+        || flag == 'j' || flag == 's' || flag == 'p') {
+            return true;
+        }
+    return false;
+}
 
+void parse_args(int argc, char **argv, options_t *options) {
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'c') {
-            options.solve = true;
+            options->solve = true;
         } else if (argv[i][0] == '-') {
             char flag = argv[i][1];
             char *value = argv[i+1];
-            run_flag(&options, flag, value);
-            i++;
-        }
+            if (!check_flag(flag)) {
+                fprintf(stderr, "Insert proper flag. Do -h for help.\n");
+                return;
+            } else if (check_flag(flag) && value == NULL) {
+                fprintf(stderr, "Wrong value.\n");
+                return;
+            } else if (check_flag(flag) && value != NULL) {
+                run_flag(options, flag, value);
+                i++;
+                }
+            }
     }
 }
 
 int main(int argc, char **argv) {
-    srand(time(NULL));
-    parse_args(argc, argv);
-    
+    options_t options;
+
+    if (argc > 1) {
+        parse_args(argc, argv, &options);
+        if (options.policy == FIFO || options.policy == SJF) {
+            job_list_random(&options);
+            show_jobs_fifo_sjf(&options);
+        } // ajouter la condition if options.policy == RR alors on init round robin jobs, et on affiche round robin.
+        if (options.use_seed == true) {
+        srand(options.seed_value);
+        } else {
+            srand(time(NULL));
+        }
+    } else {
+        job_list_random(&options);
+        show_jobs(&options);
+    }
+
     return 0;
 }
