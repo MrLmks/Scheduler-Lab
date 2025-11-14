@@ -23,4 +23,5 @@ fclean:	clean
 	rm -f $(TARGET) *.exe
 
 re:
-	fclean all
+	$(MAKE) fclean
+	$(MAKE) all

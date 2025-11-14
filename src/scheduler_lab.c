@@ -2,15 +2,13 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
-#include <math.h>
-#include <stdbool.h>
 #include "../headers/scheduler_lab.h"
 
-#define MAX_JOBS 100
+#define MAX_JOBS 20
+#define MAX_RUNTIME 20
 
 char *strupcase(char *str) {
     for (int i = 0; str[i] != '\0'; i++) {
@@ -31,12 +29,12 @@ void helper(options_t *options, char *value) {
     } else if (strcmp("RR", capitalized_value) == 0) {
         options->policy = RR;
     } else {
-        printf("Unknown Policy. Enter : FIFO, SJF or RR\n");
+        fprintf(stderr, "Unknown Policy. Enter : FIFO, SJF or RR\n");
         options->policy = UNKNOWN;
     }
 }
 
-bool check_joblist(char *value) {
+bool check_joblist(const char *value) {
     for (int i = 0; value[i] != '\0'; i++) {
         if ((value[i] < '0' || value[i] > '9') && value[i] != ',') {
             return true;
@@ -45,74 +43,70 @@ bool check_joblist(char *value) {
     return false;
 }
 
-void run_flag(options_t *options, char flag, char *value) {
+void run_flag(options_t *options, const char flag, char *value) {
     if (flag) {
-       switch (tolower(flag)) {
+        int maxlen = (int)strtol(value, NULL, 10);
+        switch (tolower(flag)) {
         case 'p':
-            helper(options, value);
-            break;
+                helper(options, value);
+                break;
         case 's':
-            if (atoi(value) >= 1) {
-                options->use_seed = true;
-                options->seed_value = atoi(value);
-            } else if (atoi(value) <= 0) {
-                options->use_seed = false;
-                options->seed_value = 0;
-            }
-            break;
+                if ((int)strtol(value, NULL, 10) >= 1) {
+                    options->use_seed = true;
+                    options->seed_value = strtol(value, NULL, 10);
+                } else if ((int)strtol(value, NULL, 10) <= 0) {
+                    options->use_seed = false;
+                    options->seed_value = 0;
+                }
+                break;
         case 'j':
-            if (atoi(value) > 0) {
-                options->jobs = atoi(value);
-            }
-            if (atoi(value) > MAX_JOBS) {
-                fprintf(stderr, "Value is too big. Was set to Max Jobs (100).\n");
-                options->jobs = MAX_JOBS;
-            }
-            break;
+                if ((int)strtol(value, NULL, 10) > 0) {
+                    options->jobs = (int)strtol(value, NULL, 10);
+                }
+                if ((int)strtol(value, NULL, 10) > MAX_JOBS) {
+                    fprintf(stderr, "Value is too big. Was set to MAX JOBS (= 20).\n");
+                    options->jobs = MAX_JOBS;
+                }
+                break;
         case 'm':
-            int maxlen = 1 + rand() % MAX_JOBS;
-            if (maxlen <= 0) {
-                fprintf(stderr, "Error generating runtime...\n");
-                return;
-            }
-            options->max_runtime = maxlen;
-            break;
+                if (maxlen <= 0) {
+                    fprintf(stderr, "Error generating runtime...\n");
+                    return;
+                }
+                options->max_runtime = maxlen;
+                break;
         case 'q':
-            if (atoi(value) > 1) {
-                options->quantum = atoi(value);
-            } else if (atoi(value) <= 0) { 
-                fprintf(stderr, "Error generating length time slice.\n");
-                return;
-            }
-            break;
+                if ((int)strtol(value, NULL, 10) > 1) {
+                    options->quantum = (int)strtol(value, NULL, 10);
+                } else if (strtol(value, NULL, 10) <= 0) {
+                    fprintf(stderr, "Error generating length time slice.\n");
+                }
+                break;
         case 'c':
-            if (strcmp("True", value) == 0 || strcmp("true", value) == 0) {
-                options->solve = true;
-            } else if (strcmp("false", value) == 0 || strcmp("False", value) == 0) {
-                options->solve = false;
-            }
-            else {
-                fprintf(stderr, "Error. write either {true} or {false}.\n");
-                return;
-            }
-            break;
+                if (strcmp("True", value) == 0 || strcmp("true", value) == 0) {
+                    options->solve = true;
+                } else if (strcmp("false", value) == 0 || strcmp("False", value) == 0) {
+                    options->solve = false;
+                }
+                else {
+                    fprintf(stderr, "Error. write either {true} or {false}.\n");
+                }
+                break;
         case 'l':
-            if (check_joblist(value)) {
-                fprintf(stderr, "Error. Write in this format : [12,34,43]\n");
-                return;
-            }
-            strncpy(options->jlist, value, MAX_JOBS);
-            extract_job_list(options);
-            show_jobs(options);
-            break;
+                if (check_joblist(value)) {
+                    fprintf(stderr, "Error. Write in this format : [12,34,43]\n");
+                    return;
+                }
+                strncpy(options->jlist, value, MAX_JOBS);
+                break;
         default:
             break;
-        } 
+        }
     }
 }
 
 bool check_flag(char flag) {
-    if (flag == 'l' || flag == 'c' || flag == 'q' || flag == 'm' 
+    if (flag == 'l' || flag == 'c' || flag == 'q' || flag == 'm'
         || flag == 'j' || flag == 's' || flag == 'p') {
             return true;
         }
@@ -123,16 +117,21 @@ void parse_args(int argc, char **argv, options_t *options) {
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'c') {
             options->solve = true;
-        } else if (argv[i][0] == '-') {
-            char flag = argv[i][1];
+        }
+        if (argv[i][0] == '-' && (argv[i][1] == 'h' || argv[i][1] == 'H')) {
+            print_help();
+            exit(0);
+        }
+        if (argv[i][0] == '-') {
+            const char flag = argv[i][1];
             char *value = argv[i+1];
             if (!check_flag(flag)) {
                 fprintf(stderr, "Insert proper flag. Do -h for help.\n");
                 return;
-            } else if (check_flag(flag) && value == NULL) {
+            } if (check_flag(flag) && value == NULL) {
                 fprintf(stderr, "Wrong value.\n");
                 return;
-            } else if (check_flag(flag) && value != NULL) {
+            } if (check_flag(flag) && value != NULL) {
                 run_flag(options, flag, value);
                 i++;
                 }
@@ -140,24 +139,54 @@ void parse_args(int argc, char **argv, options_t *options) {
     }
 }
 
-int main(int argc, char **argv) {
-    options_t options;
+void print_help() {
+    printf("Scheduler Lab - Usage:\n");
+    printf("  -l <list>      : specify job list (comma-separated, e.g., 1,2,3)\n");
+    printf("  -p <policy>    : select policy: fifo, sjf, rr\n");
+    printf("  -s <seed>      : set random seed\n");
+    printf("  -j <num_jobs>  : number of jobs (if no -l)\n");
+    printf("  -m <max_time>  : maximum runtime for random jobs\n");
+    printf("  -q <quantum>   : time slice for round-robin\n");
+    printf("  -c <true|false>: solve flag\n");
+    printf("  -h             : display this help message\n");
+}
 
-    if (argc > 1) {
-        parse_args(argc, argv, &options);
-        if (options.policy == FIFO || options.policy == SJF) {
-            job_list_random(&options);
-            show_jobs_fifo_sjf(&options);
-        } // ajouter la condition if options.policy == RR alors on init round robin jobs, et on affiche round robin.
-        if (options.use_seed == true) {
-        srand(options.seed_value);
-        } else {
-            srand(time(NULL));
-        }
+void check_options(options_t *options) {
+    if (strlen(options->jlist) > 0) {
+        options->use_random = false;
+        extract_job_list(options);
     } else {
+        options->use_random = true;
+        job_list_random(options);
+    }
+    if (options->use_seed == true) {
+        srand(options->seed_value);
+    } else {
+        srand(time(NULL));
+    }
+    if (options->policy == SJF) {
+        show_jobs_fifo_sjf(options);
+    }
+    if (options->policy == FIFO) {
+        show_jobs(options);
+    }
+    if (options->policy == RR) {
+        show_round_robin(options);
+    }
+}
+
+int main(const int argc, char **argv) {
+    options_t options;
+    options.max_runtime = MAX_RUNTIME;
+
+    if (argc == 1) {
+        srand(time(NULL));
         job_list_random(&options);
         show_jobs(&options);
     }
-
+    if (argc > 1) {
+        parse_args(argc, argv, &options);
+        check_options(&options);
+    }
     return 0;
 }
